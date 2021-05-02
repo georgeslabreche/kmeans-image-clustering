@@ -98,8 +98,6 @@ int createTrainingDataVector(int K, int trainingImgWidth, int trainingImgHeight,
             /* Only process regular image files */
             if(ent->d_type == DT_REG)
             {
-                /* Verbosity */
-                //printf("%s\n", ent->d_name);
 
                 std::string inputImgFilePath(inputImgDirPath.c_str());
                 inputImgFilePath.append("/");
@@ -177,7 +175,81 @@ int cpyImgToLabelDirs(auto *pClusterData, vector<string> *pImgFileNameVector, st
 }
 
 
-int liveTrain(int K, int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, uint8_t cpyImgToClusterDir, string inputImgDirPath, string labelDirPath)
+int appendTrainingDataToCsvFile(int K, int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, string inputImgDirPath, string trainingDataCsvFilePath)
+{
+    /* Error code returned after decoding the input image */
+    int imgDecodeRes;
+
+    float pixel;
+
+    /* The data buffer that will contain a downsampled image data to be used as a training data point */
+    const int trainingImgSize = trainingImgWidth * trainingImgHeight * trainingImgChannels;
+    uint8_t trainingImgData[trainingImgSize];
+
+    DIR *dir;
+    struct dirent *ent;
+
+    if((dir = opendir(inputImgDirPath.c_str())) != NULL)
+    {
+        /* Create a new CSV file if it doesn't exist or append to it if it already exists */
+        ofstream trainingDataCsvFile(trainingDataCsvFilePath.c_str(), std::ios::app);
+
+        /* Print all the files and directories within directory */
+        while((ent = readdir(dir)) != NULL)
+        {
+            /* Initialize the CSV data row */
+            string csvRow("");
+
+            /* Only process regular image files */
+            if(ent->d_type == DT_REG)
+            {
+                std::string inputImgFilePath(inputImgDirPath.c_str());
+                inputImgFilePath.append("/");
+                inputImgFilePath.append(ent->d_name);
+
+                imgDecodeRes = createTrainingDataBuffer(inputImgFilePath.c_str(), trainingImgWidth, trainingImgHeight, trainingImgChannels, trainingImgData);
+
+                /* If input image was successfully decoded then transform it into an array */
+                if(imgDecodeRes == NO_ERROR)
+                {
+                    /* Create CSV row containing all pixel values */
+                    for(int i = 0; i < trainingImgSize; i++)
+                    {
+                        pixel = (NORMALIZE == 1) ? ((int)trainingImgData[i]) / 255.0 : (float)trainingImgData[i];
+                        csvRow.append(to_string(pixel));
+                        csvRow.append(",");
+                    }
+
+                    /* Write row to the CSV file */
+                    csvRow.append("\n");
+                    trainingDataCsvFile << csvRow;
+                }
+                else
+                {
+                    // TODO: log error in else.
+                    cout << "Error " << imgDecodeRes << ": creating training data vector " << endl;
+                }
+            }
+        }
+
+        /* Close CSV file */
+        trainingDataCsvFile.close();
+
+        /* Close opened directory */
+        closedir(dir);
+    }
+    else
+    {
+        /* Could not open directory */
+        /* Terminate app with failure */
+        return EXIT_FAILURE;
+    }
+
+    return NO_ERROR;
+}
+
+
+int trainNow(int K, int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, uint8_t cpyImgToClusterDir, string inputImgDirPath, string labelDirPath)
 {
     /* The vector that will contain all the filenames */
     vector<string> imgFileNameVector;
@@ -201,23 +273,15 @@ int liveTrain(int K, int trainingImgWidth, int trainingImgHeight, int trainingIm
 }
 
 /**
- * There are 4 modes: collect, train, predict, and live train.
- *      mode 0 -    collect: save training data in a .txt file in kmeans/<label>/training_data.txt
- *      mode 1 -      train: read training_data.txt and build clusters. Write centroids in a .txt file in kmeans/<label>/centroids.txt
- *      mode 2 -    predict: calculate distances from each centroid apply nearest cluster to the image ipunt.
- *      mode 3 - live train: train with the available thumbnails without persisting the training data in a .txt file.
+ * There are 4 modes: train now, collect, train, and predict.
+ *      mode 0 -  train now: train with the available images without persisting the training data in a .txt file.
  *                           in practical terms this mode only really serves for testing and debugging during development.
  *                           can optionally enable copying the input image files into clustered directors in kmeans/clusters/<label>/
+ *      mode 1 -    collect: save training data in a .txt file in kmeans/<label>/training_data.txt
+ *      mode 2 -      train: read training_data.txt and build clusters. Write centroids in a .txt file in kmeans/<label>/centroids.txt
+ *      mode 3 -    predict: calculate distances from each centroid apply nearest cluster to the image ipunt.
  */
 int main(int argc, char **argv){
-
-    /* Number of clusters. The K in K-Means. */
-    int K;
-
-     /* Image directory and image label from  which clustering will be trained */
-    uint8_t cpyImgToLabelDir;
-    string inputImgDirPath;
-    string labelDirPath;
 
     if(argc < 2)
     {
@@ -228,48 +292,14 @@ int main(int argc, char **argv){
     /* Get the mode id */
     int mode = atoi(argv[1]);
 
+
     if(mode == 0)
     {
         /** 
-         * Mode: collect training data.
-         * 
-         * A total of 8 arguments are expected:
-         *  - the mode id i.e., "live train" mode in this case.
-         *  - the K number of clusters.
-         *  - the number of training iterations.
-         *  - the width of the training image input (thumbnail image data will be downsampled to this dimension).
-         *  - the height of the training image input (thumbnail image data will be downsampled to this dimension).
-         *  - the number of channels of the given image (will be greyscaled either way).
-         *  - the label for which subclassication clusters will be trained
-         *  - the image directory where the thumbnail images are located.
-         */
-        if(argc != 9)
-        {
-            cout << "Error: command-line argument count mismatch for \"collect training data\" mode.";
-            return 1;
-        }
-
-        /* Fetch arguments */
-        K = atoi(argv[2]);
-    }
-    else if(mode == 1)
-    {
-        cout << "Error: not yet implemented the \"train clusters\" mode.";
-        return 1;
-
-    }
-    else if(mode == 2)
-    {
-        cout << "Error: not yet implemented the \"predict\" mode.";
-        return 1;
-    }
-    else if(mode == 3)
-    {
-        /** 
-         * Mode: live train.
+         * Mode: train now.
          * 
          * A total of 5 arguments are expected:
-         *  - the mode id i.e., "live train" mode in this case.
+         *  - the mode id i.e., "train now" mode in this case.
          *  - the K number of clusters.
          *  - the flag indicating whether or not the thumbnails should be copied over to clustered directories.
          *  - the image directory where the images to be clustered are located.
@@ -277,17 +307,62 @@ int main(int argc, char **argv){
          */
         if(argc != 6)
         {
-            cout << "Error: command-line argument count mismatch for \"live train clusters\" mode.";
+            cout << "Error: command-line argument count mismatch for \"train now\" mode.";
             return 1;
         }
 
         /* Fetch arguments */
-        K = atoi(argv[2]);
-        cpyImgToLabelDir = atoi(argv[3]);
-        inputImgDirPath = argv[4];
-        labelDirPath = argv[5];
+        int K = atoi(argv[2]);
+        uint8_t cpyImgToLabelDir = atoi(argv[3]);
+        string inputImgDirPath = argv[4];
+        string labelDirPath = argv[5];
         
-        liveTrain(K, TRAINING_IMAGE_WIDTH, TRAINING_IMAGE_HEIGHT, TRAINING_IMAGE_CHANNELS, cpyImgToLabelDir, inputImgDirPath, labelDirPath);
+        trainNow(K, TRAINING_IMAGE_WIDTH, TRAINING_IMAGE_HEIGHT, TRAINING_IMAGE_CHANNELS, cpyImgToLabelDir, inputImgDirPath, labelDirPath);
+    }
+    else if(mode == 1)
+    {
+        /** 
+         * Mode: collect.
+         * 
+         * A total of 4 arguments are expected:
+         *  - the mode id i.e., the "collect" mode in this case.
+         *  - the K number of clusters.
+         *  - the image directory where the images to be clustered are located.
+         *  - the CSV file path where training data will be written to.
+         */
+        if(argc != 5)
+        {
+            cout << "Error: command-line argument count mismatch for \"collect\" mode.";
+            return 1;
+        }
+
+        /* Fetch arguments */
+        int K = atoi(argv[2]);
+        string inputImgDirPath = argv[3];
+        string trainingDataCsvFilePath = argv[4];
+
+        /* Create CSV file pate directories if they don't exist already */
+        /* Recursevely creates directories if more than one directory doesn't exist */
+        // TODO: Error check and handle mkdir_p response */
+        if (trainingDataCsvFilePath.find("/") != std::string::npos)
+        {
+            string trainingDataCsvDirPath = trainingDataCsvFilePath.substr(0, trainingDataCsvFilePath.find_last_of("\\/"));
+            mkdir_p(trainingDataCsvDirPath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+        }
+
+        /* Decode all images and write their pixel data into a CSV file */
+        appendTrainingDataToCsvFile(K, TRAINING_IMAGE_WIDTH, TRAINING_IMAGE_HEIGHT, TRAINING_IMAGE_CHANNELS, inputImgDirPath, trainingDataCsvFilePath);
+    }
+    else if(mode == 2)
+    {
+        cout << "Error: not yet implemented the \"train\" mode.";
+        return 1;
+
+    }
+    else if(mode == 3)
+    {
+        cout << "Error: not yet implemented the \"predict\" mode.";
+        return 1;
     }
     else
     {
