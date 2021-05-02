@@ -175,11 +175,12 @@ int cpyImgToLabelDirs(auto *pClusterData, vector<string> *pImgFileNameVector, st
 }
 
 
-int appendTrainingDataToCsvFile(int K, int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, string inputImgDirPath, string trainingDataCsvFilePath)
+int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, string inputImgDirPath, string trainingDataCsvFilePath)
 {
     /* Error code returned after decoding the input image */
     int imgDecodeRes;
 
+    /* The training data is made out of image pixe values */
     float pixel;
 
     /* The data buffer that will contain a downsampled image data to be used as a training data point */
@@ -326,20 +327,18 @@ int main(int argc, char **argv){
          * 
          * A total of 4 arguments are expected:
          *  - the mode id i.e., the "collect" mode in this case.
-         *  - the K number of clusters.
          *  - the image directory where the images to be clustered are located.
          *  - the CSV file path where training data will be written to.
          */
-        if(argc != 5)
+        if(argc != 4)
         {
             cout << "Error: command-line argument count mismatch for \"collect\" mode.";
             return 1;
         }
 
         /* Fetch arguments */
-        int K = atoi(argv[2]);
-        string inputImgDirPath = argv[3];
-        string trainingDataCsvFilePath = argv[4];
+        string inputImgDirPath = argv[2];
+        string trainingDataCsvFilePath = argv[3];
 
         /* Create CSV file pate directories if they don't exist already */
         /* Recursevely creates directories if more than one directory doesn't exist */
@@ -351,12 +350,51 @@ int main(int argc, char **argv){
         }
 
         /* Decode all images and write their pixel data into a CSV file */
-        appendTrainingDataToCsvFile(K, TRAINING_IMAGE_WIDTH, TRAINING_IMAGE_HEIGHT, TRAINING_IMAGE_CHANNELS, inputImgDirPath, trainingDataCsvFilePath);
+        appendTrainingDataToCsvFile(TRAINING_IMAGE_WIDTH, TRAINING_IMAGE_HEIGHT, TRAINING_IMAGE_CHANNELS, inputImgDirPath, trainingDataCsvFilePath);
     }
     else if(mode == 2)
     {
-        cout << "Error: not yet implemented the \"train\" mode.";
-        return 1;
+        /** 
+         * Mode: train.
+         * 
+         * A total of 3 arguments are expected:
+         *  - the mode id i.e., the "train" mode in this case.
+         *  - the K number of clusters.
+         *  - the training data CSV file.
+         *  - the training output file containing the cluster centroids.
+         */
+        if(argc != 5)
+        {
+            cout << "Error: command-line argument count mismatch for \"train\" mode.";
+            return 1;
+        }
+
+        /* Fetch arguments */
+        int K = atoi(argv[2]);
+        string trainingDataCsvFilePath = argv[3];
+        string clusterCentroidsFilePath = argv[4];
+
+        /* Read training data CSV and create the training data vector */
+        std::vector<std::array<float, TRAINING_IMAGE_SIZE>> trainingImgVector;
+        trainingImgVector = dkm::load_csv<float, TRAINING_IMAGE_SIZE>(trainingDataCsvFilePath.c_str());
+
+        /* Use K-Means Lloyd algorithm to build clusters */
+        auto clusterData = dkm::kmeans_lloyd(trainingImgVector, K);
+
+        /* TODO: Write to centroids file */
+
+        std::cout << "Means:" << std::endl;
+        for (const auto& mean : std::get<0>(clusterData))
+        {
+            std::cout << "\t(" << mean[0] << "," << mean[1] << ")" << std::endl;
+        }
+
+        std::cout << "\tLabel:";
+        for (const auto& label : std::get<1>(clusterData))
+        {
+            std::cout << " " << label;
+        }
+        std::cout << std::endl;
 
     }
     else if(mode == 3)

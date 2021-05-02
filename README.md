@@ -39,15 +39,14 @@ And:
 
 ### Collect (Mode 1)
 
-A total of 4 arguments are expected:
+A total of 3 arguments are expected:
  - Mode id i.e., the "collect" mode in this case.
- - K number of clusters.
  - Image directory where the images to be clustered are located.
  - CSV file path where training data will be written to.
 
  Example:
  ```bash
- ./K_Means 1 4 examples/earth/ kmeans/earth/training_data.csv
+ ./K_Means 1 examples/earth/ kmeans/earth/training_data.csv
  ```
 
 ### Train (Mode 2)
