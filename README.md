@@ -45,12 +45,21 @@ A total of 3 arguments are expected:
  - CSV file path where training data will be written to.
 
  Example:
- ```bash
- ./K_Means 1 examples/earth/ kmeans/earth/training_data.csv
- ```
+```bash
+./K_Means 1 examples/earth/ kmeans/earth/training_data.csv
+```
 
 ### Train (Mode 2)
-_Not yet implemented._
 
+A total of 4 arguments are expected:
+ - Mode id i.e., the "train" mode in this case.
+ - the K number of clusters.
+ - CSV file path of the training data.
+ - Output file path of the cluster centroids.
+
+Example:
+```bash
+./K_Means 2 4 kmeans/earth/training_data.csv kmeans/earth/centroids.txt
+```
 ### Predict (Mode 3)
 _Not yet implemented._

@@ -357,7 +357,7 @@ int main(int argc, char **argv){
         /** 
          * Mode: train.
          * 
-         * A total of 3 arguments are expected:
+         * A total of 4 arguments are expected:
          *  - the mode id i.e., the "train" mode in this case.
          *  - the K number of clusters.
          *  - the training data CSV file.
