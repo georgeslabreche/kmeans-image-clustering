@@ -354,15 +354,15 @@ int main(int argc, char **argv){
         /** 
          * Mode: train now.
          * 
-         * A total of 6 arguments are expected:
-         *  - the mode id i.e., "train now" mode in this case.
+         * A total of 4 or 5 arguments are expected:
+         *  - the mode id i.e., the "train now" mode in this case.
          *  - the K number of clusters.
-         *  - the flag indicating whether or not the thumbnails should be copied over to clustered directories.
+         *  - the output CSV file where the cluster centroids will be written to.
          *  - the image directory where the images to be clustered are located.
-         *  - the cluster directory where the images will be copied to (if the flag to do so is set to true).
-         *  - the training output CSV file where the cluster centroids will be written to.
+         *  - (Optional) the cluster directory where the images will be copied to.
          */
-        if(argc != 7)
+
+        if(argc < 5 && argc > 6)
         {
             cout << "Error: command-line argument count mismatch for \"train now\" mode." << endl;
             return 1;
@@ -370,10 +370,8 @@ int main(int argc, char **argv){
 
         /* Fetch arguments */
         int K = atoi(argv[2]);
-        uint8_t cpyImgToLabelDir = atoi(argv[3]);
+        string clusterCentroidsCsvFilePath = argv[3];
         string inputImgDirPath = argv[4];
-        string labelDirPath = argv[5];
-        string clusterCentroidsCsvFilePath = argv[6];
 
         /* Create clustered centroids CSV file path directories if they don't exist already */
         int mkdirRes = mkdir_p_x(clusterCentroidsCsvFilePath);
@@ -404,9 +402,12 @@ int main(int argc, char **argv){
         /* Use K-Means Lloyd algorithm to build clusters */
         auto clusterData = dkm::kmeans_lloyd(trainingImgVector, K);
 
-        /* Copy the input images to their respective cluster image directory (if the flag to do so is set to true). */
-        if(cpyImgToLabelDir == true)
+        /* Copy the input images to their respective cluster image directory (if this option has been selected by providing a label directory path). */
+        if(argc == 6)
         {
+            /* The cluster/label directory path */
+            string labelDirPath = argv[5];
+
             /* Copye images to cluster/label directories */
             int cpyRes = cpyImgToLabelDirs(&clusterData, &imgFileNameVector, inputImgDirPath, labelDirPath);
 

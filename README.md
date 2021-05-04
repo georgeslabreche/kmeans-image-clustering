@@ -13,27 +13,30 @@ cluster/label directories.
 
 ### Train Now (Mode 0)
 
-A total of 6 arguments are expected:
+A total of 4 or 5 arguments are expected:
  - Mode id i.e., the "train now" mode in this case.
  - K number of clusters.
- - Flag indicating whether or not the thumbnails should be copied over to clustered directories.
- - Image directory where the images to be clustered are located.
- - Cluster directory where the images will be copied to (if the flag to do so is set to true).
  - Output CSV file where the cluster centroids will be written to.
+ - Image directory where the images to be clustered are located.
+ - (Optional) Cluster directory where the images will be copied to.
+
 
 Example:
 ```bash
-./K_Means 0 4 1 examples/earth/ kmeans/clustered/earth/ kmeans/centroids_earth.csv
+./K_Means 0 4 kmeans/centroids_earth.csv examples/earth/ kmeans/clustered/earth/
+./K_Means 0 4 kmeans/centroids_earth.csv examples/earth/
 ```
 
 Also try:
 ```bash
-./K_Means 0 4 1 examples/edge/ kmeans/clustered/edge/ kmeans/centroids_edge.csv
+./K_Means 0 4 kmeans/centroids_edge.csv examples/edge/ kmeans/clustered/edge/
+./K_Means 0 4 kmeans/centroids_edge.csv examples/edge/
 ```
 
 And:
 ```bash
-./K_Means 0 4 1 examples/bad/ kmeans/clustered/bad/ kmeans/centroids_bad.csv
+./K_Means 0 4 kmeans/centroids_bad.csv examples/bad/ kmeans/clustered/bad/
+./K_Means 0 4 kmeans/centroids_bad.csv examples/bad/
 ```
 
 ### Collect (Mode 1)
