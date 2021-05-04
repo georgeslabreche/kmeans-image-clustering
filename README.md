@@ -20,24 +20,19 @@ A total of 4 or 5 arguments are expected:
  - Image directory where the images to be clustered are located.
  - (Optional) Cluster directory where the images will be copied to.
 
-
 Example:
 ```bash
-./K_Means 0 4 kmeans/centroids_earth.csv examples/earth/ kmeans/clustered/earth/
 ./K_Means 0 4 kmeans/centroids_earth.csv examples/earth/
 ```
 
 Also try:
 ```bash
-./K_Means 0 4 kmeans/centroids_edge.csv examples/edge/ kmeans/clustered/edge/
-./K_Means 0 4 kmeans/centroids_edge.csv examples/edge/
+./K_Means 0 4 kmeans/centroids_earth.csv examples/earth/ kmeans/clustered/earth/
 ```
 
-And:
-```bash
-./K_Means 0 4 kmeans/centroids_bad.csv examples/bad/ kmeans/clustered/bad/
-./K_Means 0 4 kmeans/centroids_bad.csv examples/bad/
-```
+Other example image folders to try:
+- examples/edge/
+- examples/bad/
 
 ### Collect (Mode 1)
 
@@ -64,4 +59,16 @@ Example:
 ./K_Means 2 4 kmeans/training_data_earth.csv kmeans/centroids_earth.csv
 ```
 ### Predict (Mode 3)
-_Not yet implemented._
+
+A total of 3 arguments are expected:
+ - Mode id i.e., the "predict" mode in this case.
+ - File path of the image to label.
+ - CSV file path of the centroid file used to determine which label to apply to the given image.
+
+Also try:
+```bash
+./K_Means 3 examples/earth/img_msec_1606835961336_2_thumbnail.jpeg kmeans/centroids_earth.csv
+./K_Means 3 examples/earth/img_msec_1609324358567_2_thumbnail.jpeg kmeans/centroids_earth.csv
+./K_Means 3 examples/earth/img_msec_1606876023471_2_thumbnail.jpeg kmeans/centroids_earth.csv
+./K_Means 3 examples/earth/img_msec_1609362399310_2_thumbnail.jpeg kmeans/centroids_earth.csv
+```

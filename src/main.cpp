@@ -21,27 +21,27 @@ using namespace std;
  * Flag indicating whether or not the pixel values should be normalized or not.
  * In terms of clustering there seems to be no obvious advantages or disadvantages to normalizing or not.
  */
-#define NORMALIZE                                                                                       1
+#define NORMALIZE                                                                                     1
 
 /** 
  * Training image dimension.
  * The images that will be used as training inputs will be resized to this dimension
  */
-#define TRAINING_IMAGE_WIDTH                                                                           20
-#define TRAINING_IMAGE_HEIGHT                                                                          20
+#define KMEANS_IMAGE_WIDTH                                                                           20
+#define KMEANS_IMAGE_HEIGHT                                                                          20
 
 /** 
  * Training image channels.
  * The images that will be used as trainig inputs will be have their channels changed to this.
  * Options are defined in stb_image.h: STBI_default, STBI_grey, STBI_grey_alpha, and STBI_rgb_alpha
  */
-#define TRAINING_IMAGE_CHANNELS                                                                 STBI_grey
+#define KMEANS_IMAGE_CHANNELS                                                                 STBI_grey
 
 /** 
  * Training image size.
  * The images that will be used as trainig inputs will be resized to this size
  */
-#define TRAINING_IMAGE_SIZE        TRAINING_IMAGE_WIDTH * TRAINING_IMAGE_HEIGHT * TRAINING_IMAGE_CHANNELS
+#define KMEANS_IMAGE_SIZE        KMEANS_IMAGE_WIDTH * KMEANS_IMAGE_HEIGHT * KMEANS_IMAGE_CHANNELS
 
 
 typedef enum _error_codes {
@@ -71,7 +71,7 @@ int mkdir_p_x(string filepath)
     return NO_ERROR;
 }
 
-int createTrainingDataBuffer(const char *inputImgFilePath, int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, uint8_t* pTrainingImgData)
+int createImgDataBuffer(const char *inputImgFilePath, int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, uint8_t* pTrainingImgDataBuffer)
 {
     int inputImgWidth;
     int inputImgHeight;
@@ -90,7 +90,7 @@ int createTrainingDataBuffer(const char *inputImgFilePath, int trainingImgWidth,
     }
 
     /* Downsample the image i.e., resize the image to a smaller dimension */
-    int resizeRes = stbir_resize_uint8(inputImgData, inputImgWidth, inputImgHeight, 0, pTrainingImgData, trainingImgWidth, trainingImgHeight, 0, trainingImgChannels);
+    int resizeRes = stbir_resize_uint8(inputImgData, inputImgWidth, inputImgHeight, 0, pTrainingImgDataBuffer, trainingImgWidth, trainingImgHeight, 0, trainingImgChannels);
 
     /* Free the input image data buffer */
     stbi_image_free(inputImgData);
@@ -104,19 +104,19 @@ int createTrainingDataBuffer(const char *inputImgFilePath, int trainingImgWidth,
     return NO_ERROR;
 }
 
-int createTrainingDataVector(int K, int trainingImgWidth, int trainingImgHeight, int trainingImgChannels,\
+int createTrainingDataVector(int trainingImgWidth, int trainingImgHeight, int trainingImgChannels,\
     string inputImgDirPath, vector<string> *pImgFileNameVector,\
-    vector<array<float, TRAINING_IMAGE_SIZE>> *pTrainingImgVector)
+    vector<array<float, KMEANS_IMAGE_SIZE>> *pTrainingImgVector)
 {
     /* Error code returned after decoding the input image */
     int imgDecodeRes;
 
     /* The data buffer that will contain a downsampled image data to be used as a training data point */
     const int trainingImgSize = trainingImgWidth * trainingImgHeight * trainingImgChannels;
-    uint8_t trainingImgData[trainingImgSize];
+    uint8_t trainingImgDataBuffer[trainingImgSize];
 
     /* The array that will contain a downsampled image data to use as a training data point */
-    array<float, TRAINING_IMAGE_SIZE> trainingImgDataArray;
+    array<float, KMEANS_IMAGE_SIZE> trainingImgDataArray;
 
     DIR *dir;
     struct dirent *ent;
@@ -136,7 +136,7 @@ int createTrainingDataVector(int K, int trainingImgWidth, int trainingImgHeight,
                 inputImgFilePath.append(ent->d_name);
 
                 /* Create buffer containing image training data */
-                imgDecodeRes = createTrainingDataBuffer(inputImgFilePath.c_str(), trainingImgWidth, trainingImgHeight, trainingImgChannels, trainingImgData);
+                imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), trainingImgWidth, trainingImgHeight, trainingImgChannels, trainingImgDataBuffer);
 
                 /* If input image was successfully decoded then transform it into an array */
                 if(imgDecodeRes == NO_ERROR)
@@ -144,7 +144,7 @@ int createTrainingDataVector(int K, int trainingImgWidth, int trainingImgHeight,
                     /* Put image data into array */
                     for(int i = 0; i < trainingImgSize; i++)
                     {
-                        trainingImgDataArray.at(i) = (NORMALIZE == 1) ? ((int)trainingImgData[i]) / 255.0 : (float)trainingImgData[i];
+                        trainingImgDataArray.at(i) = (NORMALIZE == 1) ? ((int)trainingImgDataBuffer[i]) / 255.0 : (float)trainingImgDataBuffer[i];
                     }
 
                     /* Put array into vector */
@@ -174,7 +174,7 @@ int createTrainingDataVector(int K, int trainingImgWidth, int trainingImgHeight,
     return NO_ERROR;
 }
 
-int cpyImgToLabelDirs(tuple<vector<array<float, TRAINING_IMAGE_SIZE>>, vector<uint32_t>> *pClusterData,\
+int cpyImgToLabelDirs(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uint32_t>> *pClusterData,\
     vector<string> *pImgFileNameVector, string inputImgDirPath, string labelDirPath)
 {
     int i = 0;
@@ -227,7 +227,7 @@ int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int
 
     /* The data buffer that will contain a downsampled image data to be used as a training data point */
     const int trainingImgSize = trainingImgWidth * trainingImgHeight * trainingImgChannels;
-    uint8_t trainingImgData[trainingImgSize];
+    uint8_t trainingImgDataBuffer[trainingImgSize];
 
     DIR *dir;
     struct dirent *ent;
@@ -250,7 +250,7 @@ int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int
                 inputImgFilePath.append("/");
                 inputImgFilePath.append(ent->d_name);
 
-                imgDecodeRes = createTrainingDataBuffer(inputImgFilePath.c_str(), trainingImgWidth, trainingImgHeight, trainingImgChannels, trainingImgData);
+                imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), trainingImgWidth, trainingImgHeight, trainingImgChannels, trainingImgDataBuffer);
 
                 /* If input image was successfully decoded then transform it into an array */
                 if(imgDecodeRes == NO_ERROR)
@@ -258,7 +258,7 @@ int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int
                     /* Create CSV row containing all pixel values */
                     for(int i = 0; i < trainingImgSize; i++)
                     {
-                        pixel = (NORMALIZE == 1) ? ((int)trainingImgData[i]) / 255.0 : (float)trainingImgData[i];
+                        pixel = (NORMALIZE == 1) ? ((int)trainingImgDataBuffer[i]) / 255.0 : (float)trainingImgDataBuffer[i];
                         csvRow.append(to_string(pixel));
                         csvRow.append(",");
                     }
@@ -292,7 +292,7 @@ int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int
 }
 
 
-int writeCentroidsToCsvFile(tuple<vector<array<float, TRAINING_IMAGE_SIZE>>, vector<uint32_t>> *pClusterData, string clusterCentroidsCsvFilePath)
+int writeCentroidsToCsvFile(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uint32_t>> *pClusterData, string clusterCentroidsCsvFilePath)
 {
     try{
         /* Create a new CSV file and write centroid rows to it */
@@ -387,10 +387,10 @@ int main(int argc, char **argv){
         vector<string> imgFileNameVector;
 
         /* The vector that will contain all the downsampled image data points as training data points */
-        vector<array<float, TRAINING_IMAGE_SIZE>> trainingImgVector;
+        vector<array<float, KMEANS_IMAGE_SIZE>> trainingImgVector;
 
         /* Populate the training image data vector */
-        createTrainingDataVector(K, TRAINING_IMAGE_WIDTH, TRAINING_IMAGE_HEIGHT, TRAINING_IMAGE_CHANNELS, inputImgDirPath, &imgFileNameVector, &trainingImgVector);
+        createTrainingDataVector(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, &imgFileNameVector, &trainingImgVector);
 
         /* Check if images were loaded or not */
         if(trainingImgVector.size() == 0)
@@ -458,7 +458,7 @@ int main(int argc, char **argv){
         }
 
         /* Decode all images and write their pixel data into a CSV file */
-        int res = appendTrainingDataToCsvFile(TRAINING_IMAGE_WIDTH, TRAINING_IMAGE_HEIGHT, TRAINING_IMAGE_CHANNELS, inputImgDirPath, trainingDataCsvFilePath);
+        int res = appendTrainingDataToCsvFile(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, trainingDataCsvFilePath);
 
         /* Exit program if no training data was written (e.g. image folder is empty) */
         if(res != NO_ERROR)
@@ -500,8 +500,8 @@ int main(int argc, char **argv){
         }
 
         /* Read training data CSV and create the training data vector */
-        std::vector<std::array<float, TRAINING_IMAGE_SIZE>> trainingImgVector;
-        trainingImgVector = dkm::load_csv<float, TRAINING_IMAGE_SIZE>(trainingDataCsvFilePath.c_str());
+        std::vector<std::array<float, KMEANS_IMAGE_SIZE>> trainingImgVector;
+        trainingImgVector = dkm::load_csv<float, KMEANS_IMAGE_SIZE>(trainingDataCsvFilePath.c_str());
 
         /* Use K-Means Lloyd algorithm to build clusters */
         auto clusterData = dkm::kmeans_lloyd(trainingImgVector, K);
@@ -516,8 +516,52 @@ int main(int argc, char **argv){
     }
     else if(mode == 3)
     {
-        cout << "Error: not yet implemented the \"predict\" mode." << endl;
-        return 1;
+        /** 
+         * Mode: predict.
+         * 
+         * A total of 3 arguments are expected:
+         *  - the mode id i.e., the "predict" mode in this case.
+         *  - the image to label.
+         *  - the centroid CSV file used to determine the label to apply to the given image.
+         */
+        if(argc != 4)
+        {
+            cout << "Error: command-line argument count mismatch for \"predict\" mode." << endl;
+            return 1;
+        }
+
+        string inputImgFilePath = argv[2];
+        string clusterCentroidsCsvFilePath = argv[3];
+
+        /* Create buffer containing image input data */
+        uint8_t imgDataBuffer[KMEANS_IMAGE_SIZE];
+        int imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, imgDataBuffer);
+
+        /* Exit program if failed to load input image. */
+        if(imgDecodeRes != NO_ERROR)
+        {
+            cout << "Error: failed to load input image: " << inputImgFilePath << endl;
+            return 1;
+        }
+
+        /* Need to put the image data buffer into an array */
+        array<float, KMEANS_IMAGE_SIZE> imgDataArray;
+
+        /* Put image data into array */
+        for(int i = 0; i < KMEANS_IMAGE_SIZE; i++)
+        {
+            imgDataArray.at(i) = (NORMALIZE == 1) ? ((int)imgDataBuffer[i]) / 255.0 : (float)imgDataBuffer[i];
+        }
+
+        /* Read the cluster centroids CSV file */
+        std::vector<std::array<float, KMEANS_IMAGE_SIZE>> clusterCentroidsVector;
+        clusterCentroidsVector = dkm::load_csv<float, KMEANS_IMAGE_SIZE>(clusterCentroidsCsvFilePath.c_str());
+
+        /* Return the cluster id to which the input image belongs to */
+        int clusterId = dkm::predict<float, KMEANS_IMAGE_SIZE>(clusterCentroidsVector, imgDataArray);
+
+        /* Return the cluster id label applied to the input image */
+        cout << clusterId;
     }
     else
     {
@@ -525,5 +569,5 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    return 0;
+    return NO_ERROR;
 }
