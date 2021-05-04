@@ -5,11 +5,11 @@ K-Means image clustering that just works.
 2. Compile with `make`. Can also compile for ARM architecture with `make TARGET=arm`.
 ## Getting Started
 Compile the project with `make`. There are 4 modes: collect, train, predict, and live train.
- - **Mode 0 – train now**: train with existing images in given directory without persisting the training data in a .txt file. Optionally enable copying the input image files into 
- - **Mode 1 – collect**: save training data in a .csv file in case image files are transient. This file can be read later to build the clusters when enough training data has been collected.
- - **Mode 2 – train**: read training_data.csv and build clusters. Write centroids in a .txt file in `kmeans/<id>/centroids.txt`.
- - **Mode 3 – predict**: calculate distances from each centroid and apply nearest cluster to the image ipunt.
-cluster/label directories.
+ - **Mode 0 – train now**: train with existing images in given directory without persisting the training data in a file. Optionally enable copying the input image files into 
+ - **Mode 1 – collect**: save training data in a CSV file in case image files are transient. This file can be read later to build the clusters when enough training data has been collected.
+ - **Mode 2 – train**: read training_data CSV file and build clusters. Write centroids in CSV file at the given file path.
+ - **Mode 3 – predict**: calculate distances from each cluster centroid and return the nearest cluster id for the image input.
+ - **Mode 4 – batch predict**: calculate distances from each cluster centroid for each image in a given directory and **moves** the images into their respective cluster/label directory.
 
 ### Train Now (Mode 0)
 
@@ -72,7 +72,6 @@ Example:
 ./K_Means 3 examples/earth/img_msec_1606876023471_2_thumbnail.jpeg kmeans/centroids_earth.csv
 ./K_Means 3 examples/earth/img_msec_1609362399310_2_thumbnail.jpeg kmeans/centroids_earth.csv
 ```
-
 
 ### Batch Predict (Mode 4)
 
