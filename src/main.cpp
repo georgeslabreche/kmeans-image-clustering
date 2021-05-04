@@ -43,7 +43,6 @@ using namespace std;
  */
 #define KMEANS_IMAGE_SIZE        KMEANS_IMAGE_WIDTH * KMEANS_IMAGE_HEIGHT * KMEANS_IMAGE_CHANNELS
 
-
 typedef enum _error_codes {
     NO_ERROR               = 0, /* No error */
     ERROR_LOADING_IMAGE    = 1, /* Error loading image */
@@ -85,7 +84,7 @@ int createImgDataBuffer(const char *inputImgFilePath, int trainingImgWidth, int 
     /* NULL on an allocation failure or if the image is corrupt or invalid */
     if(inputImgData == NULL)
     {
-        cout << "Error: allocation failure of image file is corrupt or invalid: " << inputImgFilePath << endl;
+        std::cout << "Error: allocation failure of image file is corrupt or invalid: " << inputImgFilePath << endl;
         return ERROR_LOADING_IMAGE;
     }
 
@@ -121,7 +120,6 @@ int createTrainingDataVector(int trainingImgWidth, int trainingImgHeight, int tr
     DIR *dir;
     struct dirent *ent;
 
-
     if((dir = opendir(inputImgDirPath.c_str())) != NULL)
     {   
         /* Print all the files and directories within directory */
@@ -156,7 +154,7 @@ int createTrainingDataVector(int trainingImgWidth, int trainingImgHeight, int tr
                 else
                 {
                     /* Skip problematic image file */
-                    cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
+                    std::cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
                 }
             }
         }
@@ -198,7 +196,7 @@ int cpyImgToLabelDirs(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uint
         /* Exit program if directories were not created as expected */
         if(mkdirRes != NO_ERROR)
         {
-            cout << "Error: failed to create directory for file path: " << clusteredImgFilePath << endl;
+            std::cout << "Error: failed to create directory for file path: " << clusteredImgFilePath << endl;
             return mkdirRes;
         }
 
@@ -270,7 +268,7 @@ int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int
                 else
                 {
                     /* Skip problematic image file */
-                    cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
+                    std::cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
                 }
             }
         }
@@ -321,7 +319,7 @@ int writeCentroidsToCsvFile(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vecto
     }
     catch(...)
     {
-        cout << "Error: an unknown error occured while writing the CSV output file for the cluster centroids: " << clusterCentroidsCsvFilePath << endl;
+        std::cout << "Error: an unknown error occured while writing the CSV output file for the cluster centroids: " << clusterCentroidsCsvFilePath << endl;
         return ERROR_WRITING_CENTROID;
     }
 
@@ -337,235 +335,244 @@ int writeCentroidsToCsvFile(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vecto
  *      mode 2 -      train: read training_data.txt and build clusters. Write centroids in a .txt file in kmeans/<label>/centroids.txt
  *      mode 3 -    predict: calculate distances from each centroid apply nearest cluster to the image ipunt.
  */
-int main(int argc, char **argv){
-
-    if(argc < 2)
+int main(int argc, char **argv)
+{
+    try
     {
-        cout << "Error: command-line argument count mismatch." << endl;
-        return 1;
-    }
-
-    /* Get the mode id */
-    int mode = atoi(argv[1]);
-
-
-    if(mode == 0)
-    {
-        /** 
-         * Mode: train now.
-         * 
-         * A total of 4 or 5 arguments are expected:
-         *  - the mode id i.e., the "train now" mode in this case.
-         *  - the K number of clusters.
-         *  - the output CSV file where the cluster centroids will be written to.
-         *  - the image directory where the images to be clustered are located.
-         *  - (Optional) the cluster directory where the images will be copied to.
-         */
-
-        if(argc < 5 && argc > 6)
+        /* Check that at least the "mode" argument is given */
+        if(argc < 2)
         {
-            cout << "Error: command-line argument count mismatch for \"train now\" mode." << endl;
+            std::cerr << "Error: command-line argument count mismatch." << endl;
             return 1;
         }
 
-        /* Fetch arguments */
-        int K = atoi(argv[2]);
-        string clusterCentroidsCsvFilePath = argv[3];
-        string inputImgDirPath = argv[4];
+        /* Get the mode id */
+        int mode = atoi(argv[1]);
 
-        /* Create clustered centroids CSV file path directories if they don't exist already */
-        int mkdirRes = mkdir_p_x(clusterCentroidsCsvFilePath);
-
-        /* Exit program if directories were not created as expected */
-        if(mkdirRes != NO_ERROR)
+        /* Process the selected mode */
+        if(mode == 0)
         {
-            cout << "Error: failed to create directory for file path: " << clusterCentroidsCsvFilePath << endl;
-            return 1;
-        }
+            /** 
+             * Mode: train now.
+             * 
+             * A total of 4 or 5 arguments are expected:
+             *  - the mode id i.e., the "train now" mode in this case.
+             *  - the K number of clusters.
+             *  - the output CSV file where the cluster centroids will be written to.
+             *  - the image directory where the images to be clustered are located.
+             *  - (Optional) the cluster directory where the images will be copied to.
+             */
 
-        /* The vector that will contain all the filenames */
-        vector<string> imgFileNameVector;
-
-        /* The vector that will contain all the downsampled image data points as training data points */
-        vector<array<float, KMEANS_IMAGE_SIZE>> trainingImgVector;
-
-        /* Populate the training image data vector */
-        createTrainingDataVector(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, &imgFileNameVector, &trainingImgVector);
-
-        /* Check if images were loaded or not */
-        if(trainingImgVector.size() == 0)
-        {
-            cout << "Error: No image files found in given directory: " << inputImgDirPath << endl;
-            return 1;
-        }
-
-        /* Use K-Means Lloyd algorithm to build clusters */
-        auto clusterData = dkm::kmeans_lloyd(trainingImgVector, K);
-
-        /* Copy the input images to their respective cluster image directory (if this option has been selected by providing a label directory path). */
-        if(argc == 6)
-        {
-            /* The cluster/label directory path */
-            string labelDirPath = argv[5];
-
-            /* Copye images to cluster/label directories */
-            int cpyRes = cpyImgToLabelDirs(&clusterData, &imgFileNameVector, inputImgDirPath, labelDirPath);
-
-            /* Exit program if images were not copied to cluster/label directories */
-            if(cpyRes != NO_ERROR)
+            if(argc < 5 && argc > 6)
             {
-                cout << "Error: failed to create directory for file path: " << clusterCentroidsCsvFilePath << endl;
+                std::cerr << "Error: command-line argument count mismatch for \"train now\" mode." << endl;
+                return 1;
+            }
+
+            /* Fetch arguments */
+            int K = atoi(argv[2]);
+            string clusterCentroidsCsvFilePath = argv[3];
+            string inputImgDirPath = argv[4];
+
+            /* Create clustered centroids CSV file path directories if they don't exist already */
+            int mkdirRes = mkdir_p_x(clusterCentroidsCsvFilePath);
+
+            /* Exit program if directories were not created as expected */
+            if(mkdirRes != NO_ERROR)
+            {
+                std::cerr << "Error: failed to create directory for file path: " << clusterCentroidsCsvFilePath << endl;
+                return 1;
+            }
+
+            /* The vector that will contain all the filenames */
+            vector<string> imgFileNameVector;
+
+            /* The vector that will contain all the downsampled image data points as training data points */
+            vector<array<float, KMEANS_IMAGE_SIZE>> trainingImgVector;
+
+            /* Populate the training image data vector */
+            createTrainingDataVector(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, &imgFileNameVector, &trainingImgVector);
+
+            /* Check if images were loaded or not */
+            if(trainingImgVector.size() == 0)
+            {
+                std::cerr << "Error: No image files found in given directory: " << inputImgDirPath << endl;
+                return 1;
+            }
+
+            /* Use K-Means Lloyd algorithm to build clusters */
+            auto clusterData = dkm::kmeans_lloyd(trainingImgVector, K);
+
+            /* Copy the input images to their respective cluster image directory (if this option has been selected by providing a label directory path). */
+            if(argc == 6)
+            {
+                /* The cluster/label directory path */
+                string labelDirPath = argv[5];
+
+                /* Copye images to cluster/label directories */
+                int cpyRes = cpyImgToLabelDirs(&clusterData, &imgFileNameVector, inputImgDirPath, labelDirPath);
+
+                /* Exit program if images were not copied to cluster/label directories */
+                if(cpyRes != NO_ERROR)
+                {
+                    std::cerr << "Error: failed to create directory for file path: " << clusterCentroidsCsvFilePath << endl;
+                    return 1;
+                }
+            }
+
+            /* Write CSV output file for cluster centroids */
+            int centroidsRes = writeCentroidsToCsvFile(&clusterData, clusterCentroidsCsvFilePath);
+            if(centroidsRes != NO_ERROR)
+            {
+                std::cerr << "Error: an unknown error occured while writing the CSV output file for the cluster centroids: " << clusterCentroidsCsvFilePath << endl;
                 return 1;
             }
         }
-
-        /* Write CSV output file for cluster centroids */
-        int centroidsRes = writeCentroidsToCsvFile(&clusterData, clusterCentroidsCsvFilePath);
-        if(centroidsRes != NO_ERROR)
+        else if(mode == 1)
         {
+            /** 
+             * Mode: collect.
+             * 
+             * A total of 4 arguments are expected:
+             *  - the mode id i.e., the "collect" mode in this case.
+             *  - the image directory where the images to be clustered are located.
+             *  - the CSV file path where training data will be written to.
+             */
+            if(argc != 4)
+            {
+                std::cerr << "Error: command-line argument count mismatch for \"collect\" mode." << endl;
+                return 1;
+            }
+
+            /* Fetch arguments */
+            string inputImgDirPath = argv[2];
+            string trainingDataCsvFilePath = argv[3];
+
+            /* Create CSV file path directories if they don't exist already */
+            int mkdirRes = mkdir_p_x(trainingDataCsvFilePath);
+
+            /* Exit program if directories were not created as expected */
+            if(mkdirRes != NO_ERROR)
+            {
+                std::cerr << "Error: failed to create directory for file path: " << trainingDataCsvFilePath << endl;
+                return 1;
+            }
+
+            /* Decode all images and write their pixel data into a CSV file */
+            int res = appendTrainingDataToCsvFile(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, trainingDataCsvFilePath);
+
+            /* Exit program if no training data was written (e.g. image folder is empty) */
+            if(res != NO_ERROR)
+            {
+                std::cerr << "Error: failed to create training data CSV file, maybe the image directory is empty: " << inputImgDirPath << endl;
+                return 1;
+            }
+        }
+        else if(mode == 2)
+        {
+            /** 
+             * Mode: train.
+             * 
+             * A total of 4 arguments are expected:
+             *  - the mode id i.e., the "train" mode in this case.
+             *  - the K number of clusters.
+             *  - the training data CSV file.
+             *  - the training output CSV file where the cluster centroids will be written to.
+             */
+            if(argc != 5)
+            {
+                std::cerr << "Error: command-line argument count mismatch for \"train\" mode." << endl;
+                return 1;
+            }
+
+            /* Fetch arguments */
+            int K = atoi(argv[2]);
+            string trainingDataCsvFilePath = argv[3];
+            string clusterCentroidsCsvFilePath = argv[4];
+
+            /* Create clustered centroids CSV file path directories if they don't exist already */
+            int mkdirRes = mkdir_p_x(clusterCentroidsCsvFilePath);
+
+            /* Exit program if directories were not created as expected */
+            if(mkdirRes != NO_ERROR)
+            {
+                std::cerr << "Error: failed to create directory for file path: " << clusterCentroidsCsvFilePath << endl;
+                return 1;
+            }
+
+            /* Read training data CSV and create the training data vector */
+            std::vector<std::array<float, KMEANS_IMAGE_SIZE>> trainingImgVector;
+            trainingImgVector = dkm::load_csv<float, KMEANS_IMAGE_SIZE>(trainingDataCsvFilePath.c_str());
+
+            /* Use K-Means Lloyd algorithm to build clusters */
+            auto clusterData = dkm::kmeans_lloyd(trainingImgVector, K);
+
+            /* Write the cluster centroids to a CSV file */
+            int centroidsRes = writeCentroidsToCsvFile(&clusterData, clusterCentroidsCsvFilePath);
+            if(centroidsRes != NO_ERROR)
+            {
+                return 1;
+            }
+        }
+        else if(mode == 3)
+        {
+            /** 
+             * Mode: predict.
+             * 
+             * A total of 3 arguments are expected:
+             *  - the mode id i.e., the "predict" mode in this case.
+             *  - the image to label.
+             *  - the centroid CSV file used to determine the label to apply to the given image.
+             */
+            if(argc != 4)
+            {
+                std::cerr << "Error: command-line argument count mismatch for \"predict\" mode." << endl;
+                return 1;
+            }
+
+            string inputImgFilePath = argv[2];
+            string clusterCentroidsCsvFilePath = argv[3];
+
+            /* Create buffer containing image input data */
+            uint8_t imgDataBuffer[KMEANS_IMAGE_SIZE];
+            int imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, imgDataBuffer);
+
+            /* Exit program if failed to load input image. */
+            if(imgDecodeRes != NO_ERROR)
+            {
+                std::cerr << "Error: failed to load input image: " << inputImgFilePath << endl;
+                return 1;
+            }
+
+            /* Need to put the image data buffer into an array */
+            array<float, KMEANS_IMAGE_SIZE> imgDataArray;
+
+            /* Put image data into array */
+            for(int i = 0; i < KMEANS_IMAGE_SIZE; i++)
+            {
+                imgDataArray.at(i) = (NORMALIZE == 1) ? ((int)imgDataBuffer[i]) / 255.0 : (float)imgDataBuffer[i];
+            }
+
+            /* Read the cluster centroids CSV file */
+            std::vector<std::array<float, KMEANS_IMAGE_SIZE>> clusterCentroidsVector;
+            clusterCentroidsVector = dkm::load_csv<float, KMEANS_IMAGE_SIZE>(clusterCentroidsCsvFilePath.c_str());
+
+            /* Return the cluster id to which the input image belongs to */
+            int clusterId = dkm::predict<float, KMEANS_IMAGE_SIZE>(clusterCentroidsVector, imgDataArray);
+
+            /* Return the cluster id label applied to the input image */
+            std::cout << clusterId;
+        }
+        else
+        {
+            std::cerr << "Error: invalid mode id." << endl;
             return 1;
         }
-
     }
-    else if(mode == 1)
+    catch(const std::exception& e)
     {
-        /** 
-         * Mode: collect.
-         * 
-         * A total of 4 arguments are expected:
-         *  - the mode id i.e., the "collect" mode in this case.
-         *  - the image directory where the images to be clustered are located.
-         *  - the CSV file path where training data will be written to.
-         */
-        if(argc != 4)
-        {
-            cout << "Error: command-line argument count mismatch for \"collect\" mode." << endl;
-            return 1;
-        }
-
-        /* Fetch arguments */
-        string inputImgDirPath = argv[2];
-        string trainingDataCsvFilePath = argv[3];
-
-        /* Create CSV file path directories if they don't exist already */
-        int mkdirRes = mkdir_p_x(trainingDataCsvFilePath);
-
-        /* Exit program if directories were not created as expected */
-        if(mkdirRes != NO_ERROR)
-        {
-            cout << "Error: failed to create directory for file path: " << trainingDataCsvFilePath << endl;
-            return 1;
-        }
-
-        /* Decode all images and write their pixel data into a CSV file */
-        int res = appendTrainingDataToCsvFile(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, trainingDataCsvFilePath);
-
-        /* Exit program if no training data was written (e.g. image folder is empty) */
-        if(res != NO_ERROR)
-        {
-            cout << "Error: failed to create training data CSV file, maybe the image directory is empty: " << inputImgDirPath << endl;
-            return 1;
-        }
-    }
-    else if(mode == 2)
-    {
-        /** 
-         * Mode: train.
-         * 
-         * A total of 4 arguments are expected:
-         *  - the mode id i.e., the "train" mode in this case.
-         *  - the K number of clusters.
-         *  - the training data CSV file.
-         *  - the training output CSV file where the cluster centroids will be written to.
-         */
-        if(argc != 5)
-        {
-            cout << "Error: command-line argument count mismatch for \"train\" mode." << endl;
-            return 1;
-        }
-
-        /* Fetch arguments */
-        int K = atoi(argv[2]);
-        string trainingDataCsvFilePath = argv[3];
-        string clusterCentroidsCsvFilePath = argv[4];
-
-        /* Create clustered centroids CSV file path directories if they don't exist already */
-        int mkdirRes = mkdir_p_x(clusterCentroidsCsvFilePath);
-
-        /* Exit program if directories were not created as expected */
-        if(mkdirRes != NO_ERROR)
-        {
-            cout << "Error: failed to create directory for file path: " << clusterCentroidsCsvFilePath << endl;
-            return 1;
-        }
-
-        /* Read training data CSV and create the training data vector */
-        std::vector<std::array<float, KMEANS_IMAGE_SIZE>> trainingImgVector;
-        trainingImgVector = dkm::load_csv<float, KMEANS_IMAGE_SIZE>(trainingDataCsvFilePath.c_str());
-
-        /* Use K-Means Lloyd algorithm to build clusters */
-        auto clusterData = dkm::kmeans_lloyd(trainingImgVector, K);
-
-        /* Write the cluster centroids to a CSV file */
-        int centroidsRes = writeCentroidsToCsvFile(&clusterData, clusterCentroidsCsvFilePath);
-        if(centroidsRes != NO_ERROR)
-        {
-            return 1;
-        }
-
-    }
-    else if(mode == 3)
-    {
-        /** 
-         * Mode: predict.
-         * 
-         * A total of 3 arguments are expected:
-         *  - the mode id i.e., the "predict" mode in this case.
-         *  - the image to label.
-         *  - the centroid CSV file used to determine the label to apply to the given image.
-         */
-        if(argc != 4)
-        {
-            cout << "Error: command-line argument count mismatch for \"predict\" mode." << endl;
-            return 1;
-        }
-
-        string inputImgFilePath = argv[2];
-        string clusterCentroidsCsvFilePath = argv[3];
-
-        /* Create buffer containing image input data */
-        uint8_t imgDataBuffer[KMEANS_IMAGE_SIZE];
-        int imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, imgDataBuffer);
-
-        /* Exit program if failed to load input image. */
-        if(imgDecodeRes != NO_ERROR)
-        {
-            cout << "Error: failed to load input image: " << inputImgFilePath << endl;
-            return 1;
-        }
-
-        /* Need to put the image data buffer into an array */
-        array<float, KMEANS_IMAGE_SIZE> imgDataArray;
-
-        /* Put image data into array */
-        for(int i = 0; i < KMEANS_IMAGE_SIZE; i++)
-        {
-            imgDataArray.at(i) = (NORMALIZE == 1) ? ((int)imgDataBuffer[i]) / 255.0 : (float)imgDataBuffer[i];
-        }
-
-        /* Read the cluster centroids CSV file */
-        std::vector<std::array<float, KMEANS_IMAGE_SIZE>> clusterCentroidsVector;
-        clusterCentroidsVector = dkm::load_csv<float, KMEANS_IMAGE_SIZE>(clusterCentroidsCsvFilePath.c_str());
-
-        /* Return the cluster id to which the input image belongs to */
-        int clusterId = dkm::predict<float, KMEANS_IMAGE_SIZE>(clusterCentroidsVector, imgDataArray);
-
-        /* Return the cluster id label applied to the input image */
-        cout << clusterId;
-    }
-    else
-    {
-        cout << "Error: invalid mode id." << endl;
+        /* Unknown exception */
+        std::cerr << e.what() << '\n';
         return 1;
     }
 
