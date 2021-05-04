@@ -65,10 +65,24 @@ A total of 3 arguments are expected:
  - File path of the image to label.
  - CSV file path of the centroid file used to determine which label to apply to the given image.
 
-Also try:
+Example:
 ```bash
 ./K_Means 3 examples/earth/img_msec_1606835961336_2_thumbnail.jpeg kmeans/centroids_earth.csv
 ./K_Means 3 examples/earth/img_msec_1609324358567_2_thumbnail.jpeg kmeans/centroids_earth.csv
 ./K_Means 3 examples/earth/img_msec_1606876023471_2_thumbnail.jpeg kmeans/centroids_earth.csv
 ./K_Means 3 examples/earth/img_msec_1609362399310_2_thumbnail.jpeg kmeans/centroids_earth.csv
+```
+
+
+### Batch Predict (Mode 4)
+
+A total of 4 arguments are expected:
+ - Mode id i.e., the "batch predict" mode in this case.
+ - Directory path of images to label.
+ - Directory path to move the labeled imaged to.
+ - CSV file of the centroid file used to determine the labels to apply to the given images.
+
+Example:
+```bash
+./K_Means 4 examples/earth/ kmeans/clustered/earth/ kmeans/centroids_earth.csv
 ```

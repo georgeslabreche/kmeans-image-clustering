@@ -45,9 +45,10 @@ using namespace std;
 
 typedef enum _error_codes {
     NO_ERROR               = 0, /* No error */
-    ERROR_LOADING_IMAGE    = 1, /* Error loading image */
-    ERROR_RESIZING_IMAGE   = 2, /* Error resizing the images */
-    ERROR_WRITING_CENTROID = 3  /* Error writing CSV output file for centroids */
+    ERROR_OPENING_DIR      = 1, /* Error opening directory */
+    ERROR_LOADING_IMAGE    = 2, /* Error loading image */
+    ERROR_RESIZING_IMAGE   = 3, /* Error resizing the images */
+    ERROR_WRITING_CENTROID = 4  /* Error writing CSV output file for centroids */
 } errorCodes;
 
 
@@ -59,7 +60,7 @@ typedef enum _error_codes {
 int mkdir_p_x(string filepath)
 {
     /* Don't create any directories if the give filepath is just a filename without any directory paths */
-    if (filepath.find("/") != std::string::npos)
+    if (filepath.find("/") != string::npos)
     {
         string dirPath = filepath.substr(0, filepath.find_last_of("\\/"));
         int mkdirRes = mkdir_p(dirPath.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
@@ -70,16 +71,15 @@ int mkdir_p_x(string filepath)
     return NO_ERROR;
 }
 
-int createImgDataBuffer(const char *inputImgFilePath, int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, uint8_t* pTrainingImgDataBuffer)
+int createImgDataBuffer(const char *inputImgFilePath, int imgWidth, int imgHeight, int imgChannels, uint8_t* pImgDataBuffer)
 {
     int inputImgWidth;
     int inputImgHeight;
     int intputImgChannels;
 
     /* Decode the image file */
-    /* Note that the desired number of channels is the value set for the training image data input */
-    // TODO: Handle errors.
-    uint8_t *inputImgData = (uint8_t*)stbi_load(inputImgFilePath, &inputImgWidth, &inputImgHeight, &intputImgChannels, trainingImgChannels);
+    /* Note that the desired number of channels is the value fixed for the training and prediction image data input */
+    uint8_t *inputImgData = (uint8_t*)stbi_load(inputImgFilePath, &inputImgWidth, &inputImgHeight, &intputImgChannels, imgChannels);
 
     /* NULL on an allocation failure or if the image is corrupt or invalid */
     if(inputImgData == NULL)
@@ -89,7 +89,7 @@ int createImgDataBuffer(const char *inputImgFilePath, int trainingImgWidth, int 
     }
 
     /* Downsample the image i.e., resize the image to a smaller dimension */
-    int resizeRes = stbir_resize_uint8(inputImgData, inputImgWidth, inputImgHeight, 0, pTrainingImgDataBuffer, trainingImgWidth, trainingImgHeight, 0, trainingImgChannels);
+    int resizeRes = stbir_resize_uint8(inputImgData, inputImgWidth, inputImgHeight, 0, pImgDataBuffer, imgWidth, imgHeight, 0, imgChannels);
 
     /* Free the input image data buffer */
     stbi_image_free(inputImgData);
@@ -129,7 +129,7 @@ int createTrainingDataVector(int trainingImgWidth, int trainingImgHeight, int tr
             if(ent->d_type == DT_REG)
             {
 
-                std::string inputImgFilePath(inputImgDirPath.c_str());
+                string inputImgFilePath(inputImgDirPath.c_str());
                 inputImgFilePath.append("/");
                 inputImgFilePath.append(ent->d_name);
 
@@ -166,13 +166,13 @@ int createTrainingDataVector(int trainingImgWidth, int trainingImgHeight, int tr
     {
         /* Could not open directory */
         /* Terminate app with failure */
-        return EXIT_FAILURE;
+        return ERROR_OPENING_DIR;
     }
 
     return NO_ERROR;
 }
 
-int cpyImgToLabelDirs(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uint32_t>> *pClusterData,\
+int cpyImgsToLabelDirs(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uint32_t>> *pClusterData,\
     vector<string> *pImgFileNameVector, string inputImgDirPath, string labelDirPath)
 {
     int i = 0;
@@ -244,7 +244,7 @@ int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int
             /* Only process regular image files */
             if(ent->d_type == DT_REG)
             {
-                std::string inputImgFilePath(inputImgDirPath.c_str());
+                string inputImgFilePath(inputImgDirPath.c_str());
                 inputImgFilePath.append("/");
                 inputImgFilePath.append(ent->d_name);
 
@@ -283,7 +283,7 @@ int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int
     {
         /* Could not open directory */
         /* Terminate app with failure */
-        return EXIT_FAILURE;
+        return ERROR_OPENING_DIR;
     }
 
     return NO_ERROR;
@@ -321,6 +321,111 @@ int writeCentroidsToCsvFile(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vecto
     {
         std::cout << "Error: an unknown error occured while writing the CSV output file for the cluster centroids: " << clusterCentroidsCsvFilePath << endl;
         return ERROR_WRITING_CENTROID;
+    }
+
+    return NO_ERROR;
+}
+
+int batchPredict(string inputImgDirPath, string outputImgDirPath, int imgWidth, int imgHeight, int imgChannels, string clusterCentroidsCsvFilePath)
+{
+    /* Error code returned after decoding the input image */
+    int imgDecodeRes;
+
+    /* Error code moving the image file from the input directory to the label output directory */
+    int renameRes;
+
+    /* Error code returned after creating the directories for the labeled image output file path */
+    int mkdirRes;
+
+    /* The cluster id that an image will be labeld with */
+    int clusterId;
+
+    /* Read the cluster centroids CSV file */
+    std::vector<std::array<float, KMEANS_IMAGE_SIZE>> clusterCentroidsVector;
+    clusterCentroidsVector = dkm::load_csv<float, KMEANS_IMAGE_SIZE>(clusterCentroidsCsvFilePath.c_str());
+
+
+    /* The data buffer that will contain a downsampled image data to process */
+    const int imgSize = imgWidth * imgHeight * imgChannels;
+    uint8_t imgDataBuffer[imgSize];
+
+    /* The array that will contain a downsampled image data to process */
+    array<float, KMEANS_IMAGE_SIZE> imgDataArray;
+
+    DIR *dir;
+    struct dirent *ent;
+
+    if((dir = opendir(inputImgDirPath.c_str())) != NULL)
+    {   
+        /* Print all the files and directories within directory */
+        while((ent = readdir(dir)) != NULL)
+        {
+            /* Only process regular image files */
+            if(ent->d_type == DT_REG)
+            {
+
+                string inputImgFilePath(inputImgDirPath.c_str());
+                inputImgFilePath.append("/");
+                inputImgFilePath.append(ent->d_name);
+
+                /* Create buffer containing image data */
+                imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), imgWidth, imgHeight, imgChannels, imgDataBuffer);
+
+                /* If input image was successfully decoded then transform it into an array */
+                if(imgDecodeRes == NO_ERROR)
+                {
+                    /* Put image data into array */
+                    for(int i = 0; i < imgSize; i++)
+                    {
+                        imgDataArray.at(i) = (NORMALIZE == 1) ? ((int)imgDataBuffer[i]) / 255.0 : (float)imgDataBuffer[i];
+                    }
+
+                    /* Use the centroids data to predict which cluster/label applies to the image */
+                    /* Return the cluster id to which the input image belongs to */
+                    clusterId = dkm::predict<float, KMEANS_IMAGE_SIZE>(clusterCentroidsVector, imgDataArray);
+
+                    /* Build file path of output image (located in cluster/label directory) */
+                    string outputImgFilePath(outputImgDirPath.c_str());
+                    outputImgFilePath.append("/");
+                    outputImgFilePath.append(to_string(clusterId));
+                    outputImgFilePath.append("/");
+                    outputImgFilePath.append(ent->d_name);
+
+                    /* Create the directories for the labeled image output file path (if they don't exist) */
+                    mkdirRes = mkdir_p_x(outputImgFilePath);
+
+                    /* Check for error creating directories */
+                    if(mkdirRes != NO_ERROR)
+                    {
+                        std::cout << "Error: failed to create directory for file path: " << outputImgFilePath << endl;
+                        return mkdirRes;
+                    }
+
+                    /* Move the image to its label directory */
+                    /* Check for errors */
+                    renameRes = rename(inputImgFilePath.c_str(), outputImgFilePath.c_str());
+                    if(renameRes != NO_ERROR)
+                    {
+                        /* Skip problematic image file */
+                        std::cout << "Error: failed to move file: " << inputImgFilePath << " --> " << outputImgFilePath << endl;
+                    }
+                }
+                else
+                {
+                    /* Skip problematic image file */
+                    std::cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
+                }
+            }
+        }
+
+        /* Close opened directory */
+        closedir(dir);
+    }
+    else
+    {
+        /* Could not open directory */
+        /* Terminate app with failure */
+        return ERROR_OPENING_DIR;
     }
 
     return NO_ERROR;
@@ -410,7 +515,7 @@ int main(int argc, char **argv)
                 string labelDirPath = argv[5];
 
                 /* Copye images to cluster/label directories */
-                int cpyRes = cpyImgToLabelDirs(&clusterData, &imgFileNameVector, inputImgDirPath, labelDirPath);
+                int cpyRes = cpyImgsToLabelDirs(&clusterData, &imgFileNameVector, inputImgDirPath, labelDirPath);
 
                 /* Exit program if images were not copied to cluster/label directories */
                 if(cpyRes != NO_ERROR)
@@ -521,7 +626,7 @@ int main(int argc, char **argv)
              * 
              * A total of 3 arguments are expected:
              *  - the mode id i.e., the "predict" mode in this case.
-             *  - the image to label.
+             *  - the file path of the image to label.
              *  - the centroid CSV file used to determine the label to apply to the given image.
              */
             if(argc != 4)
@@ -530,6 +635,7 @@ int main(int argc, char **argv)
                 return 1;
             }
 
+            /* Fetch arguments */
             string inputImgFilePath = argv[2];
             string clusterCentroidsCsvFilePath = argv[3];
 
@@ -562,6 +668,32 @@ int main(int argc, char **argv)
 
             /* Return the cluster id label applied to the input image */
             std::cout << clusterId;
+        }
+        else if(mode == 4)
+        {
+            /** 
+             * Mode: batch predict.
+             * 
+             * A total of 4 arguments are expected:
+             *  - the mode id i.e., the "batch predict" mode in this case.
+             *  - the directory path of images to label.
+             *  - the directory path to move the labeled imaged to.
+             *  - the CSV file of the centroid file used to determine the labels to apply to the given images.
+
+            /* Fetch arguments */
+            string inputImgDirPath = argv[2];
+            string outputImgDirPath = argv[3];
+            string clusterCentroidsCsvFilePath = argv[4];
+
+            /* Cluster all images in the given directory */
+            int batchPredRes = batchPredict(inputImgDirPath, outputImgDirPath, KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, clusterCentroidsCsvFilePath);
+
+            /* Exit program if failed to load input image. */
+            if(batchPredRes != NO_ERROR)
+            {
+                std::cerr << "Error: failed to cluster images in: " << inputImgDirPath << endl;
+                return 1;
+            }
         }
         else
         {
