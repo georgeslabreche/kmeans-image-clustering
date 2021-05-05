@@ -679,6 +679,12 @@ int main(int argc, char **argv)
              *  - the directory path of images to label.
              *  - the directory path to move the labeled imaged to.
              *  - the CSV file of the centroid file used to determine the labels to apply to the given images.
+             */
+            if(argc != 5)
+            {
+                std::cerr << "Error: command-line argument count mismatch for \"batch predict\" mode." << endl;
+                return 1;
+            }
 
             /* Fetch arguments */
             string inputImgDirPath = argv[2];
