@@ -1,6 +1,7 @@
 [submodule "dkm"]
 	path = dkm
 	url = https://github.com/georgeslabreche/dkm.git
+	branch = orbitai
 [submodule "stb"]
 	path = stb
 	url = https://github.com/georgeslabreche/stb.git
