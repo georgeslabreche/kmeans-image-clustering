@@ -55,13 +55,36 @@ typedef enum _error_codes {
     ERROR_UNKNOWN          = 8  /* Error: unknown */
 } errorCodes;
 
+/**
+ * Check if file exists given a filepath.
+ */ 
+inline bool exists(const string& filepath)
+{
+  struct stat buffer;
+  return (stat (filepath.c_str(), &buffer) == 0); 
+}
+
+/**
+ * Process a comma separated string into a vector of strings.
+ */
+inline void commaSeparatedStringToVector(const char* commaSeparatedString, vector<string> *pOutputVector)
+{
+    stringstream ss(commaSeparatedString);
+
+    while(ss.good()) 
+    {
+        string substr;
+        getline(ss, substr, ',');
+        pOutputVector->push_back(substr);
+    }
+}
 
 /**
  * Invokes mkdir_p but with some extra checks.
  * Create clustered centroids CSV file path directories if they don't exist already.
  * Recursively creates directories if more than one directory doesn't exist.
  */
-int mkdir_p_x(string filepath)
+inline int mkdir_p_x(string filepath)
 {
     /* Don't create any directories if the give filepath is just a filename without any directory paths */
     if (filepath.find("/") != string::npos)
@@ -108,7 +131,7 @@ int createImgDataBuffer(const char *inputImgFilePath, int imgWidth, int imgHeigh
 }
 
 int createTrainingDataVector(int trainingImgWidth, int trainingImgHeight, int trainingImgChannels,\
-    string inputImgDirPath, vector<string> *pImgFileNameVector,\
+    string inputImgDirPath, vector<string> *pTrainingImgTypeVector, vector<string> *pImgFileNameVector,\
     vector<array<float, KMEANS_IMAGE_SIZE>> *pTrainingImgVector)
 {
     /* Error code returned after decoding the input image */
@@ -123,6 +146,7 @@ int createTrainingDataVector(int trainingImgWidth, int trainingImgHeight, int tr
 
     DIR *dir;
     struct dirent *ent;
+    string filename;
 
     if((dir = opendir(inputImgDirPath.c_str())) != NULL)
     {   
@@ -132,33 +156,40 @@ int createTrainingDataVector(int trainingImgWidth, int trainingImgHeight, int tr
             /* Only process regular image files */
             if(ent->d_type == DT_REG)
             {
+                /* Get filename and its extension */
+                filename = string(ent->d_name);
+                string fileExtension = filename.substr(filename.find_last_of(".") + 1);
 
-                string inputImgFilePath(inputImgDirPath.c_str());
-                inputImgFilePath.append("/");
-                inputImgFilePath.append(ent->d_name);
-
-                /* Create buffer containing image training data */
-                imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), trainingImgWidth, trainingImgHeight, trainingImgChannels, trainingImgDataBuffer);
-
-                /* If input image was successfully decoded then transform it into an array */
-                if(imgDecodeRes == NO_ERROR)
+                /* Process image as training data if the image is the desired type i.e., it has the desired extension */
+                if (find(pTrainingImgTypeVector->begin(), pTrainingImgTypeVector->end(), fileExtension) != pTrainingImgTypeVector->end())
                 {
-                    /* Put image data into array */
-                    for(int i = 0; i < trainingImgSize; i++)
+                    string inputImgFilePath(inputImgDirPath.c_str());
+                    inputImgFilePath.append("/");
+                    inputImgFilePath.append(ent->d_name);
+
+                    /* Create buffer containing image training data */
+                    imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), trainingImgWidth, trainingImgHeight, trainingImgChannels, trainingImgDataBuffer);
+
+                    /* If input image was successfully decoded then transform it into an array */
+                    if(imgDecodeRes == NO_ERROR)
                     {
-                        trainingImgDataArray.at(i) = (NORMALIZE == 1) ? ((int)trainingImgDataBuffer[i]) / 255.0 : (float)trainingImgDataBuffer[i];
+                        /* Put image data into array */
+                        for(int i = 0; i < trainingImgSize; i++)
+                        {
+                            trainingImgDataArray.at(i) = (NORMALIZE == 1) ? ((int)trainingImgDataBuffer[i]) / 255.0 : (float)trainingImgDataBuffer[i];
+                        }
+
+                        /* Put array into vector */
+                        pTrainingImgVector->push_back(trainingImgDataArray);
+
+                        /* Keep track of all the image file names being processed */
+                        pImgFileNameVector->push_back(ent->d_name);
                     }
-
-                    /* Put array into vector */
-                    pTrainingImgVector->push_back(trainingImgDataArray);
-
-                    /* Keep track of all the image file names being processed */
-                    pImgFileNameVector->push_back(ent->d_name);
-                }
-                else
-                {
-                    /* Skip problematic image file */
-                    std::cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
+                    else
+                    {
+                        /* Skip problematic image file */
+                        std::cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
+                    }
                 }
             }
         }
@@ -177,7 +208,7 @@ int createTrainingDataVector(int trainingImgWidth, int trainingImgHeight, int tr
 }
 
 int cpyImgsToLabelDirs(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uint32_t>> *pClusterData,\
-    vector<string> *pImgFileNameVector, string inputImgDirPath, string labelDirPath)
+    vector<string> *pImgFileNameVector, string inputImgDirPath, string labelDirPath, vector<string> *pImgTypesToCopyVector)
 {
     int i = 0;
     for (const int label : std::get<1>(*pClusterData))
@@ -207,11 +238,30 @@ int cpyImgsToLabelDirs(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uin
         /* Path of the labeled image */
         clusteredImgFilePath.append(pImgFileNameVector->at(i).c_str());
 
-        /* Copy image file from input image directory into cluster/label directory */
-        std::ifstream src(inputImgFilePath.c_str());
-        std::ofstream dst(clusteredImgFilePath.c_str());
-        dst << src.rdbuf();
+        /* Path the the imput image file, without the image file type extension */
+        string inputImgFilePathWithoutExtension = inputImgFilePath.substr(0, inputImgFilePath.find_last_of("."));
 
+        /* Path of the clustered image file, without the image file type extension. */
+        string clusteredImgFilePathWithoutExtension = clusteredImgFilePath.substr(0, clusteredImgFilePath.find_last_of("."));
+
+        /* Move all the image types that need to be moved */
+        for(size_t j=0; j < pImgTypesToCopyVector->size(); j++)
+        {
+            /* The src image that we want to copy */
+            string src = inputImgFilePathWithoutExtension + "." + pImgTypesToCopyVector->at(j);
+
+            /* Copy image file from input image directory into cluster/label directory */
+            /* Only proceeed with a copy if the source image exists */
+            if(exists(src))
+            {
+                ifstream srcStream(src.c_str());
+                ofstream dstStream((clusteredImgFilePathWithoutExtension + "." + pImgTypesToCopyVector->at(j)).c_str());
+
+                dstStream << srcStream.rdbuf();
+            }
+        }
+
+        /* Increment index */
         i++;
     }
 
@@ -219,7 +269,7 @@ int cpyImgsToLabelDirs(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uin
 }
 
 
-int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, string inputImgDirPath, string trainingDataCsvFilePath, int *pNewTrainingDataCount)
+int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int trainingImgChannels, string inputImgDirPath, vector<string> *pTrainingImgTypeVector, string trainingDataCsvFilePath, int *pNewTrainingDataCount)
 {
     /* Error code returned after decoding the input image */
     int imgDecodeRes;
@@ -248,34 +298,42 @@ int appendTrainingDataToCsvFile(int trainingImgWidth, int trainingImgHeight, int
             /* Only process regular image files */
             if(ent->d_type == DT_REG)
             {
-                string inputImgFilePath(inputImgDirPath.c_str());
-                inputImgFilePath.append("/");
-                inputImgFilePath.append(ent->d_name);
+                /* Get filename and its extension */
+                string filename = string(ent->d_name);
+                string fileExtension = filename.substr(filename.find_last_of(".") + 1);
 
-                imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), trainingImgWidth, trainingImgHeight, trainingImgChannels, trainingImgDataBuffer);
-
-                /* If input image was successfully decoded then transform it into an array */
-                if(imgDecodeRes == NO_ERROR)
+                /* Process image as training data if the image is the desired type i.e., it has the desired extension */
+                if (find(pTrainingImgTypeVector->begin(), pTrainingImgTypeVector->end(), fileExtension) != pTrainingImgTypeVector->end())
                 {
-                    /* Create CSV row containing all pixel values */
-                    for(int i = 0; i < trainingImgSize; i++)
+                    string inputImgFilePath(inputImgDirPath.c_str());
+                    inputImgFilePath.append("/");
+                    inputImgFilePath.append(ent->d_name);
+
+                    imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), trainingImgWidth, trainingImgHeight, trainingImgChannels, trainingImgDataBuffer);
+
+                    /* If input image was successfully decoded then transform it into an array */
+                    if(imgDecodeRes == NO_ERROR)
                     {
-                        pixel = (NORMALIZE == 1) ? ((int)trainingImgDataBuffer[i]) / 255.0 : (float)trainingImgDataBuffer[i];
-                        csvRow.append(to_string(pixel));
-                        csvRow.append(",");
+                        /* Create CSV row containing all pixel values */
+                        for(int i = 0; i < trainingImgSize; i++)
+                        {
+                            pixel = (NORMALIZE == 1) ? ((int)trainingImgDataBuffer[i]) / 255.0 : (float)trainingImgDataBuffer[i];
+                            csvRow.append(to_string(pixel));
+                            csvRow.append(",");
+                        }
+
+                        /* Write row to the CSV file */
+                        csvRow.append("\n");
+                        trainingDataCsvFile << csvRow;
+
+                        /* Count number of training data appended to the CSV file */
+                        *pNewTrainingDataCount = *pNewTrainingDataCount + 1;
                     }
-
-                    /* Write row to the CSV file */
-                    csvRow.append("\n");
-                    trainingDataCsvFile << csvRow;
-
-                    /* Count number of training data appended to the CSV file */
-                    *pNewTrainingDataCount = *pNewTrainingDataCount + 1;
-                }
-                else
-                {
-                    /* Skip problematic image file */
-                    std::cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
+                    else
+                    {
+                        /* Skip problematic image file */
+                        std::cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
+                    }
                 }
             }
         }
@@ -333,7 +391,7 @@ int writeCentroidsToCsvFile(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vecto
     return NO_ERROR;
 }
 
-int batchPredict(string inputImgDirPath, string outputImgDirPath, int imgWidth, int imgHeight, int imgChannels, string clusterCentroidsCsvFilePath)
+int batchPredict(string inputImgDirPath, vector<string> *pImgTypesToInferVector, string outputImgDirPath, vector<string> *pImgTypesToMoveVector, int imgWidth, int imgHeight, int imgChannels, string clusterCentroidsCsvFilePath)
 {
     /* Error code returned after decoding the input image */
     int imgDecodeRes;
@@ -370,57 +428,84 @@ int batchPredict(string inputImgDirPath, string outputImgDirPath, int imgWidth, 
             /* Only process regular image files */
             if(ent->d_type == DT_REG)
             {
+                /* Get filename and its extension */
+                string filename = string(ent->d_name);
+                string fileExtension = filename.substr(filename.find_last_of(".") + 1);
 
-                string inputImgFilePath(inputImgDirPath.c_str());
-                inputImgFilePath.append("/");
-                inputImgFilePath.append(ent->d_name);
-
-                /* Create buffer containing image data */
-                imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), imgWidth, imgHeight, imgChannels, imgDataBuffer);
-
-                /* If input image was successfully decoded then transform it into an array */
-                if(imgDecodeRes == NO_ERROR)
+                /* Process and move the image if it is a image type that we want to move i.e., it has the desired extension */
+                if (find(pImgTypesToInferVector->begin(), pImgTypesToInferVector->end(), fileExtension) != pImgTypesToInferVector->end())
                 {
-                    /* Put image data into array */
-                    for(int i = 0; i < imgSize; i++)
+                    string inputImgFilePath(inputImgDirPath.c_str());
+                    inputImgFilePath.append("/");
+                    inputImgFilePath.append(ent->d_name);
+
+                    /* Create buffer containing image data */
+                    imgDecodeRes = createImgDataBuffer(inputImgFilePath.c_str(), imgWidth, imgHeight, imgChannels, imgDataBuffer);
+
+                    /* If input image was successfully decoded then transform it into an array */
+                    if(imgDecodeRes == NO_ERROR)
                     {
-                        imgDataArray.at(i) = (NORMALIZE == 1) ? ((int)imgDataBuffer[i]) / 255.0 : (float)imgDataBuffer[i];
+                        /* Put image data into array */
+                        for(int i = 0; i < imgSize; i++)
+                        {
+                            imgDataArray.at(i) = (NORMALIZE == 1) ? ((int)imgDataBuffer[i]) / 255.0 : (float)imgDataBuffer[i];
+                        }
+
+                        /* Use the centroids data to predict which cluster/label applies to the image */
+                        /* Return the cluster id to which the input image belongs to */
+                        clusterId = dkm::predict<float, KMEANS_IMAGE_SIZE>(clusterCentroidsVector, imgDataArray);
+
+                        /* Build file path of output image (located in cluster/label directory) */
+                        string outputImgFilePath(outputImgDirPath.c_str());
+                        outputImgFilePath.append("/");
+                        outputImgFilePath.append(to_string(clusterId));
+                        outputImgFilePath.append("/");
+                        outputImgFilePath.append(ent->d_name);
+
+                        /* Create the directories for the labeled image output file path (if they don't exist) */
+                        mkdirRes = mkdir_p_x(outputImgFilePath);
+
+                        /* Check for error creating directories */
+                        if(mkdirRes != NO_ERROR)
+                        {
+                            std::cout << "Error: failed to create directory for file path: " << outputImgFilePath << endl;
+                            return mkdirRes;
+                        }
+
+                        /* Path the the imput image file, without the image file type extension */
+                        string inputImgFilePathWithoutExtension = inputImgFilePath.substr(0, inputImgFilePath.find_last_of("."));
+
+                        /* Path of the ouput image file, without the image file type extension. */
+                        string outputImgFilePathWithoutExtension = outputImgFilePath.substr(0, outputImgFilePath.find_last_of("."));
+
+                        /* Move all the image types that need to be moved */
+                        for(size_t j=0; j < pImgTypesToMoveVector->size(); j++)
+                        {
+                            /* The src image file path with the target image file type extension */
+                            string src = inputImgFilePathWithoutExtension + "." + pImgTypesToMoveVector->at(j);
+
+                            if(exists(src))
+                            {
+                                /* The dst image file path with the target image file type extension */
+                                string dst = outputImgFilePathWithoutExtension + "." + pImgTypesToMoveVector->at(j);
+
+                                /* Move the image to its label directory */
+                                renameRes = rename(src.c_str(), dst.c_str());
+
+                                /* Check for errors */
+                                if(renameRes != NO_ERROR)
+                                {
+                                    /* Skip problematic image file */
+                                    std::cout << "Error: failed to move file: " << src << " --> " << dst << endl;
+                                }
+                            }
+                        }
                     }
-
-                    /* Use the centroids data to predict which cluster/label applies to the image */
-                    /* Return the cluster id to which the input image belongs to */
-                    clusterId = dkm::predict<float, KMEANS_IMAGE_SIZE>(clusterCentroidsVector, imgDataArray);
-
-                    /* Build file path of output image (located in cluster/label directory) */
-                    string outputImgFilePath(outputImgDirPath.c_str());
-                    outputImgFilePath.append("/");
-                    outputImgFilePath.append(to_string(clusterId));
-                    outputImgFilePath.append("/");
-                    outputImgFilePath.append(ent->d_name);
-
-                    /* Create the directories for the labeled image output file path (if they don't exist) */
-                    mkdirRes = mkdir_p_x(outputImgFilePath);
-
-                    /* Check for error creating directories */
-                    if(mkdirRes != NO_ERROR)
-                    {
-                        std::cout << "Error: failed to create directory for file path: " << outputImgFilePath << endl;
-                        return mkdirRes;
-                    }
-
-                    /* Move the image to its label directory */
-                    /* Check for errors */
-                    renameRes = rename(inputImgFilePath.c_str(), outputImgFilePath.c_str());
-                    if(renameRes != NO_ERROR)
+                    else
                     {
                         /* Skip problematic image file */
-                        std::cout << "Error: failed to move file: " << inputImgFilePath << " --> " << outputImgFilePath << endl;
+                        std::cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
                     }
-                }
-                else
-                {
-                    /* Skip problematic image file */
-                    std::cout << "Skipping invalid or corrupt image: " << ent->d_name << endl;
                 }
             }
         }
@@ -467,15 +552,19 @@ int main(int argc, char **argv)
             /** 
              * Mode: train now.
              * 
-             * A total of 4 or 5 arguments are expected:
+             * A total of 5 or 7 arguments are expected:
              *  - the mode id i.e., the "train now" mode in this case.
              *  - the K number of clusters.
              *  - the output CSV file where the cluster centroids will be written to.
              *  - the image directory where the images to be clustered are located.
-             *  - (Optional) the cluster directory where the images will be copied to.
+             *  - the comma separate list of image file types to use as training data.
+             *  - Optional: 
+             *      - the cluster directory where the images will be copied to.
+             *      - the comma separated list of image file types to also copy over.
+             * 
              */
 
-            if(argc < 5 && argc > 6)
+            if(argc != 6 && argc != 8)
             {
                 std::cerr << "Error: command-line argument count mismatch for \"train now\" mode." << endl;
                 return ERROR_ARGS;
@@ -486,6 +575,12 @@ int main(int argc, char **argv)
             string clusterCentroidsCsvFilePath = argv[3];
             string inputImgDirPath = argv[4];
 
+            /* Create vector of image types to use as training data */
+            vector<string> trainingImgTypesVector;
+
+            /* Process a comma separated string into a vector of strings */
+            commaSeparatedStringToVector(argv[5], &trainingImgTypesVector);
+ 
             /* Create clustered centroids CSV file path directories if they don't exist already */
             int mkdirRes = mkdir_p_x(clusterCentroidsCsvFilePath);
 
@@ -503,7 +598,7 @@ int main(int argc, char **argv)
             vector<array<float, KMEANS_IMAGE_SIZE>> trainingImgVector;
 
             /* Populate the training image data vector */
-            createTrainingDataVector(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, &imgFileNameVector, &trainingImgVector);
+            createTrainingDataVector(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, &trainingImgTypesVector, &imgFileNameVector, &trainingImgVector);
 
             /* Check if images were loaded or not */
             if(trainingImgVector.size() == 0)
@@ -517,13 +612,19 @@ int main(int argc, char **argv)
             clusterData = dkm::kmeans_lloyd<float, KMEANS_IMAGE_SIZE>(trainingImgVector, K);
 
             /* Copy the input images to their respective cluster image directory (if this option has been selected by providing a label directory path). */
-            if(argc == 6)
+            if(argc == 8)
             {
                 /* The cluster/label directory path */
-                string labelDirPath = argv[5];
+                string labelDirPath = argv[6];
 
-                /* Copye images to cluster/label directories */
-                int cpyRes = cpyImgsToLabelDirs(&clusterData, &imgFileNameVector, inputImgDirPath, labelDirPath);
+                /* Vector of image types to move to the cluster folders */
+                vector<string> imgTypesToCopyVector;
+
+                /* Process a comma separated string into a vector of strings */
+                commaSeparatedStringToVector(argv[7], &imgTypesToCopyVector);
+
+                /* Copy images to cluster/label directories */
+                int cpyRes = cpyImgsToLabelDirs(&clusterData, &imgFileNameVector, inputImgDirPath, labelDirPath, &imgTypesToCopyVector);
 
                 /* Exit program if images were not copied to cluster/label directories */
                 if(cpyRes != NO_ERROR)
@@ -549,9 +650,10 @@ int main(int argc, char **argv)
              * A total of 4 arguments are expected:
              *  - the mode id i.e., the "collect" mode in this case.
              *  - the image directory where the images to be clustered are located.
+             *  - the comma separated list of image file types to use as training data.
              *  - the CSV file path where training data will be written to.
              */
-            if(argc != 4)
+            if(argc != 5)
             {
                 std::cerr << "Error: command-line argument count mismatch for \"collect\" mode." << endl;
                 return ERROR_ARGS;
@@ -559,7 +661,13 @@ int main(int argc, char **argv)
 
             /* Fetch arguments */
             string inputImgDirPath = argv[2];
-            string trainingDataCsvFilePath = argv[3];
+
+            /* Process a comma separated string into a vector of strings */
+            vector<string> trainingImgTypesVector;
+            commaSeparatedStringToVector(argv[3], &trainingImgTypesVector);
+
+            /* Fetch last argument */
+            string trainingDataCsvFilePath = argv[4];
 
             /* Create CSV file path directories if they don't exist already */
             int mkdirRes = mkdir_p_x(trainingDataCsvFilePath);
@@ -573,7 +681,7 @@ int main(int argc, char **argv)
 
             /* Decode all images and write their pixel data into a CSV file */
             int newTrainingDataCount;
-            int appendRes = appendTrainingDataToCsvFile(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, trainingDataCsvFilePath, &newTrainingDataCount);
+            int appendRes = appendTrainingDataToCsvFile(KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, inputImgDirPath, &trainingImgTypesVector, trainingDataCsvFilePath, &newTrainingDataCount);
 
             /* Exit program if no training data was written (e.g. image folder is empty) */
             if(appendRes != NO_ERROR)
@@ -686,13 +794,15 @@ int main(int argc, char **argv)
             /** 
              * Mode: batch predict.
              * 
-             * A total of 4 arguments are expected:
+             * A total of 6 arguments are expected:
              *  - the mode id i.e., the "batch predict" mode in this case.
              *  - the directory path of images to label.
+             *  - the comma separated list of image file types to process with the clustering model.
              *  - the directory path to move the labeled imaged to.
+             *  - the comma separated list of image file types to move to their respective cluster/label directories.
              *  - the CSV file of the centroid file used to determine the labels to apply to the given images.
              */
-            if(argc != 5)
+            if(argc != 7)
             {
                 std::cerr << "Error: command-line argument count mismatch for \"batch predict\" mode." << endl;
                 return ERROR_ARGS;
@@ -700,11 +810,27 @@ int main(int argc, char **argv)
 
             /* Fetch arguments */
             string inputImgDirPath = argv[2];
-            string outputImgDirPath = argv[3];
-            string clusterCentroidsCsvFilePath = argv[4];
+
+            /* Vector of image types to move to the cluster folders */
+            vector<string> imgTypesToInferVector;
+
+            /* Process a comma separated string into a vector of strings */
+            commaSeparatedStringToVector(argv[3], &imgTypesToInferVector);
+
+            /* Fetch argument */
+            string outputImgDirPath = argv[4];
+
+            /* Vector of image types to move to the cluster folders */
+            vector<string> imgTypesToMoveVector;
+
+            /* Process a comma separated string into a vector of strings */
+            commaSeparatedStringToVector(argv[5], &imgTypesToMoveVector);
+
+            /* Fetch argument */
+            string clusterCentroidsCsvFilePath = argv[6];
 
             /* Cluster all images in the given directory */
-            int batchPredRes = batchPredict(inputImgDirPath, outputImgDirPath, KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, clusterCentroidsCsvFilePath);
+            int batchPredRes = batchPredict(inputImgDirPath, &imgTypesToInferVector, outputImgDirPath, &imgTypesToMoveVector, KMEANS_IMAGE_WIDTH, KMEANS_IMAGE_HEIGHT, KMEANS_IMAGE_CHANNELS, clusterCentroidsCsvFilePath);
 
             /* Exit program if failed to load input image. */
             if(batchPredRes != NO_ERROR)
