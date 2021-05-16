@@ -1,7 +1,15 @@
 # K-Means Image Clustering
 K-Means image clustering that just works. 
 ## OPS-SAT
-The `opssat` branch includes customizations meant for the [SmartCam App](https://github.com/georgeslabreche/opssat-smartcam) on-board the [OPS-SAT Spacecraft](https://opssat1.esoc.esa.int/). These changes add filtering capabilities to selectively process multiple image file types during training and clustering operations.
+The `opssat` branch includes customizations meant for the [SmartCam App](https://github.com/georgeslabreche/opssat-smartcam) on-board the [OPS-SAT Spacecraft](https://opssat1.esoc.esa.int/). These changes add filtering capabilities to selectively process multiple image file types during training and clustering operations. Although customized for the OPS-SAT SmartCam, the code can be re-used for clustering with the same filtering requirements.
+### Particularity
+There is a particularity with image acquisition by the OPS-SAT SmartCam in that the produced images file types for a single picture do not all have the same name. The name of the JPEG thumbnail file differs from the PNG and IMS_RGB files in that it is affixed with "_thumbnail", for instance:
+ - img_msec_1621184871142_2_thumbnail.jpeg
+ - img_msec_1621184903224_2.png
+ - img_msec_1621184903224_2.ims_rgb
+
+The `#define` directives for `BUILD_FOR_OPSSAT_SMARTCAM` and `THUMBNAIL_AFFIX_LENGTH` are set to take into account this particularity and `BUILD_FOR_OPSSAT_SMARTCAM` should be set to `0` when building the project for use-cases outside the context of the OPS-SAT SmarCam.
+
 ## Build
 1. Initialize and update the Git submodules: `git submodule init && git submodule update`.
 2. Compile with `make`. Can also compile for ARM architecture with `make TARGET=arm`.
