@@ -1,7 +1,7 @@
 # K-Means Image Clustering
 K-Means image clustering that just works. 
 ## OPS-SAT
-The `opssat` branch includes customizations meant for the [SmartCam App](https://github.com/georgeslabreche/opssat-smartcam) on-board the [OPS-SAT Spacecraft](https://opssat1.esoc.esa.int/). These changes add filtering capabilities to selectively process multiple images file types during training and clustering operations.
+The `opssat` branch includes customizations meant for the [SmartCam App](https://github.com/georgeslabreche/opssat-smartcam) on-board the [OPS-SAT Spacecraft](https://opssat1.esoc.esa.int/). These changes add filtering capabilities to selectively process multiple image file types during training and clustering operations.
 ## Build
 1. Initialize and update the Git submodules: `git submodule init && git submodule update`.
 2. Compile with `make`. Can also compile for ARM architecture with `make TARGET=arm`.
