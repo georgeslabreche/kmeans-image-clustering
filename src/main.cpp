@@ -41,7 +41,20 @@ using namespace std;
  * Training image size.
  * The images that will be used as trainig inputs will be resized to this size
  */
-#define KMEANS_IMAGE_SIZE        KMEANS_IMAGE_WIDTH * KMEANS_IMAGE_HEIGHT * KMEANS_IMAGE_CHANNELS
+#define KMEANS_IMAGE_SIZE              KMEANS_IMAGE_WIDTH * KMEANS_IMAGE_HEIGHT * KMEANS_IMAGE_CHANNELS
+
+/**
+ * Specific to OPS-SAT SmartCam.
+ * The images files produced by OPS-SAT SmartCam do not all have the same names.
+ * The jpeg file names have a thumbnail affix whereas the otther file formats do not. E.g.:
+ *  - img_msec_1621184871142_2_thumbnail.jpeg
+ *  - img_msec_1621184903224_2.png
+ *  - img_msec_1621184903224_2.ims_rgb
+ * 
+ * This needs to be taken into account when moving non-jpeg image files into their respective cluster folders.
+ */
+#define BUILD_FOR_OPSSAT_SMARTCAM                                                                    1
+#define THUMBNAIL_AFFIX_LENGTH                                            string("_thumbnail").length()
 
 typedef enum _error_codes {
     NO_ERROR               = 0, /* No error */
@@ -239,14 +252,26 @@ int cpyImgsToLabelDirs(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uin
         clusteredImgFilePath.append(pImgFileNameVector->at(i).c_str());
 
         /* Path the the imput image file, without the image file type extension */
-        string inputImgFilePathWithoutExtension = inputImgFilePath.substr(0, inputImgFilePath.find_last_of("."));
+        string inputImgFilePathWithoutExtension;
 
         /* Path of the clustered image file, without the image file type extension. */
-        string clusteredImgFilePathWithoutExtension = clusteredImgFilePath.substr(0, clusteredImgFilePath.find_last_of("."));
+        string clusteredImgFilePathWithoutExtension;
 
         /* Move all the image types that need to be moved */
         for(size_t j=0; j < pImgTypesToCopyVector->size(); j++)
         {
+            /* Build file paths without file type extension */
+            inputImgFilePathWithoutExtension = inputImgFilePath.substr(0, inputImgFilePath.find_last_of("."));
+            clusteredImgFilePathWithoutExtension = clusteredImgFilePath.substr(0, clusteredImgFilePath.find_last_of("."));
+
+#if BUILD_FOR_OPSSAT_SMARTCAM
+            if (pImgTypesToCopyVector->at(j) != "jpeg")
+            {
+                inputImgFilePathWithoutExtension = inputImgFilePathWithoutExtension\
+                    .replace(inputImgFilePathWithoutExtension.end()-THUMBNAIL_AFFIX_LENGTH, inputImgFilePathWithoutExtension.end(), "");
+            }
+#endif
+
             /* The src image that we want to copy */
             string src = inputImgFilePathWithoutExtension + "." + pImgTypesToCopyVector->at(j);
 
@@ -254,6 +279,15 @@ int cpyImgsToLabelDirs(tuple<vector<array<float, KMEANS_IMAGE_SIZE>>, vector<uin
             /* Only proceeed with a copy if the source image exists */
             if(exists(src))
             {
+
+#if BUILD_FOR_OPSSAT_SMARTCAM
+                if (pImgTypesToCopyVector->at(j) != "jpeg")
+                {
+                    clusteredImgFilePathWithoutExtension = clusteredImgFilePathWithoutExtension\
+                        .replace(clusteredImgFilePathWithoutExtension.end()-THUMBNAIL_AFFIX_LENGTH, clusteredImgFilePathWithoutExtension.end(), "");
+                }
+#endif
+
                 ifstream srcStream(src.c_str());
                 ofstream dstStream((clusteredImgFilePathWithoutExtension + "." + pImgTypesToCopyVector->at(j)).c_str());
 
@@ -409,7 +443,6 @@ int batchPredict(string inputImgDirPath, vector<string> *pImgTypesToInferVector,
     std::vector<std::array<float, KMEANS_IMAGE_SIZE>> clusterCentroidsVector;
     clusterCentroidsVector = dkm::load_csv<float, KMEANS_IMAGE_SIZE>(clusterCentroidsCsvFilePath.c_str());
 
-
     /* The data buffer that will contain a downsampled image data to process */
     const int imgSize = imgWidth * imgHeight * imgChannels;
     uint8_t imgDataBuffer[imgSize];
@@ -473,19 +506,38 @@ int batchPredict(string inputImgDirPath, vector<string> *pImgTypesToInferVector,
                         }
 
                         /* Path the the imput image file, without the image file type extension */
-                        string inputImgFilePathWithoutExtension = inputImgFilePath.substr(0, inputImgFilePath.find_last_of("."));
+                        string inputImgFilePathWithoutExtension;
 
                         /* Path of the ouput image file, without the image file type extension. */
-                        string outputImgFilePathWithoutExtension = outputImgFilePath.substr(0, outputImgFilePath.find_last_of("."));
+                        string outputImgFilePathWithoutExtension;
 
                         /* Move all the image types that need to be moved */
                         for(size_t j=0; j < pImgTypesToMoveVector->size(); j++)
                         {
+                            /* Build file paths without file type extension */
+                            inputImgFilePathWithoutExtension = inputImgFilePath.substr(0, inputImgFilePath.find_last_of("."));
+                            outputImgFilePathWithoutExtension = outputImgFilePath.substr(0, outputImgFilePath.find_last_of("."));
+
+#if BUILD_FOR_OPSSAT_SMARTCAM
+                            if (pImgTypesToMoveVector->at(j) != "jpeg")
+                            {
+                                inputImgFilePathWithoutExtension = inputImgFilePathWithoutExtension\
+                                    .replace(inputImgFilePathWithoutExtension.end()-THUMBNAIL_AFFIX_LENGTH, inputImgFilePathWithoutExtension.end(), "");
+                            }
+#endif
                             /* The src image file path with the target image file type extension */
                             string src = inputImgFilePathWithoutExtension + "." + pImgTypesToMoveVector->at(j);
 
+                            /* Move the file if it exists */
                             if(exists(src))
                             {
+#if BUILD_FOR_OPSSAT_SMARTCAM
+                                if (pImgTypesToMoveVector->at(j) != "jpeg")
+                                {
+                                    outputImgFilePathWithoutExtension = outputImgFilePathWithoutExtension\
+                                        .replace(outputImgFilePathWithoutExtension.end()-THUMBNAIL_AFFIX_LENGTH, outputImgFilePathWithoutExtension.end(), "");
+                                }
+#endif
                                 /* The dst image file path with the target image file type extension */
                                 string dst = outputImgFilePathWithoutExtension + "." + pImgTypesToMoveVector->at(j);
 
